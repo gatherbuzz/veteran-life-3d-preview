@@ -49,7 +49,15 @@
   #hudBtns{display:none;}
   #hudBtns button{padding:8px 10px;font-size:13px;}
   #scoreChip,#netChip{display:none;}
-  #btnMenu{min-height:44px;min-width:64px;font-weight:800;border-color:var(--accent);}
+  #btnMenu{min-height:44px;min-width:64px;font-weight:800;border-color:var(--accent);pointer-events:auto;}
+  /* Fix 1 (2026-11-15): #hud is pointer-events:none and the Menu
+     button is a direct child of #hudTop, so it inherited none and
+     every real tap fell through to the canvas (the character
+     walked instead of the menu opening). The chips re-enable
+     themselves and #needBar has its own rule; the Menu button
+     had no such rule. Synthetic el.click() still worked, which
+     is why the headless check passed while the browser playtest
+     failed: only a real pointer event proves this. */
   #hudTop{padding-right:118px;}
 
   /* HUD hide / show toggle: always visible, even when the HUD is hidden */
@@ -183,7 +191,13 @@
   .logItem b{color:var(--text);}
   #stationBtn,#actBtn{display:none;}
   #interactBtn{display:none;}
-  #questBar{position:fixed;left:50%;transform:translateX(-50%);top:calc(122px + env(safe-area-inset-top));background:rgba(24,33,48,.94);border:1px solid var(--accent);color:var(--text);padding:7px 14px;border-radius:99px;font-size:12.5px;font-weight:700;z-index:19;display:none;max-width:94vw;text-align:center;box-shadow:0 6px 18px rgba(0,0,0,.4);cursor:pointer;}
+  /* Fix 4 (2026-11-15): the pill sits at z-index 30, above #hud's
+     z-index 20 stacking context, because the radio toast lives
+     inside #hud: at 19 the toast painted over the pill whenever
+     the pill was expanded to multiple lines, covering the
+     Goals & Places button and the objective text. Sheets (50)
+     still cover the pill. */
+  #questBar{position:fixed;left:50%;transform:translateX(-50%);top:calc(122px + env(safe-area-inset-top));background:rgba(24,33,48,.94);border:1px solid var(--accent);color:var(--text);padding:7px 14px;border-radius:99px;font-size:12.5px;font-weight:700;z-index:30;display:none;max-width:94vw;text-align:center;box-shadow:0 6px 18px rgba(0,0,0,.4);cursor:pointer;}
   /* UI preview: the objective is one short line, truncated with
      an ellipsis when long; tapping the pill expands it in place
      to the full text, with a Goals & Places button inside the
@@ -912,6 +926,27 @@ function persistLocal(keyOverride, force){
       (cur && cur.state && cur.state.lifeId===S.lifeId && typeof cur.state.saveSeq==="number")? cur.state.saveSeq : 0,
       (bakCur && bakCur.state && typeof bakCur.state.saveSeq==="number")? bakCur.state.saveSeq : 0
     );
+    // Fix 2 (2026-11-15): a same-life stale tab must never write.
+    // The pointer check above only catches a DIFFERENT life: a
+    // tab holding this life's older snapshot passes it, and the
+    // max-plus-one below then re-stamps that older state with a
+    // fresh sequence, so its 20 s autosave (or a reload's
+    // beforeunload flush) rolls a played session back to the
+    // older snapshot and overwrites the newer save with it. That
+    // is exactly what the playtest saw: the welcome screen showed
+    // Day 7 $515 (the newest save, read at boot) while Continue
+    // settled on a Day 6 $502 copy a stale tab had re-stamped
+    // higher. When the newest stored copy of THIS life is ahead
+    // of the state in memory, this tab missed a newer write and
+    // writes nothing at all: not the backup either, because the
+    // backup under this lifeId IS this life's backup, and an old
+    // state written there destroys the newer copy too. (A forced
+    // settle never trips this: it adopts the newest copy first,
+    // so the sequence is equal by the time it writes.)
+    if(isCurrent && mySeq>(typeof S.saveSeq==="number"? S.saveSeq : 0)){
+      saveFailReason="stale";
+      return false;
+    }
     S.saveSeq=mySeq+1;
     S.saveStamp=Date.now();
     // Camera state is never part of a save. The view is derived
@@ -2327,6 +2362,7 @@ function buildWorld(){
     bulb.position.set(s[0],3.5,s[1]); worldGroup.add(bulb); lampBulbs.push(bulb);
   });
   var treeSpots=[[-14,-14],[14,-14],[-14,24],[16,22],[-38,-8],[38,-10],[-10,-26],[12,30],[-36,26],[36,28]];
+  treeBoxes=treeSpots.map(function(s){ return {x1:s[0]-1.1, x2:s[0]+1.1, z1:s[1]-1.1, z2:s[1]+1.1}; });
   treeSpots.forEach(function(s){
     box(0.35,1.6,0.35,0x6e4f30,s[0],0.8,s[1],worldGroup,1);
     var crown=new THREE.Mesh(new THREE.SphereGeometry(1.7,10,8), mat(0x3f7a37,1));
@@ -2564,14 +2600,36 @@ function buildInteriors(){
       box(9,1.05,1.1,0x8a5a3b, 0,0.55,5.2, g,0.8); // counter
       // UI preview: the counter, the exit, and the menu board are
       // labeled, so the room reads at a glance. ORDER HERE faces
-      // the room from the counter's north face; EXIT sits on the
-      // green door; MENU sits on the board over the booths. Each
-      // plate sits 0.02 in front of the face it labels, so no two
-      // faces share a plane.
+      // the room from the counter's north face and the camera from
+      // its south face; EXIT sits on both faces of the green door;
+      // MENU sits on the board over the booths. Each plate sits
+      // 0.02 in front of the face it labels, so no two faces
+      // share a plane.
       var orderPlate=makeSignPlate("ORDER HERE", 2.2);
       orderPlate.position.set(0,0.6,4.63); orderPlate.rotation.y=Math.PI; g.add(orderPlate);
-      var exitPlate=makeSignPlate("EXIT", 1.2);
+      // Fix 5 (2026-11-15): the porch camera looks in from the
+      // south, so a sign on the counter's north face (and the
+      // door's north face) faces away from it and is invisible:
+      // the same sign rides the south face too, where the camera
+      // can read it.
+      var orderPlateS=makeSignPlate("ORDER HERE", 2.2);
+      orderPlateS.position.set(0,0.6,5.77); g.add(orderPlateS);
+      // Fix 5b (2026-11-15): the counter-face plates sit below the
+      // default porch framing (they project under the frame), so a
+      // HANGING "ORDER HERE" rides above the counter at y=2.75,
+      // z=5.2, facing south (no rotation). Height probe, default
+      // spawn view: y=2.5 projects to 875/998 desktop and 763/844
+      // portrait; y=3.0 to 756/998 and 649/844 — y=2.75 lands
+      // mid-frame on both. Two thin rods hang it from above; the
+      // counter-face plates stay for close-up views.
+      var orderPlateH=makeSignPlate("ORDER HERE", 2.2);
+      orderPlateH.position.set(0,2.75,5.2); g.add(orderPlateH);
+      box(0.04,0.5,0.04,0x2c313a, -0.9,3.17,5.2, g,0.6);
+      box(0.04,0.5,0.04,0x2c313a, 0.9,3.17,5.2, g,0.6);
+      var exitPlate=makeSignPlate("EXIT", 1.6);
       exitPlate.position.set(0,2.2,7.76); exitPlate.rotation.y=Math.PI; g.add(exitPlate);
+      var exitPlateS=makeSignPlate("EXIT", 1.6);
+      exitPlateS.position.set(0,2.2,8.0); g.add(exitPlateS);
       var menuPlate=makeSignPlate("MENU", 2.0);
       menuPlate.position.set(0,2.75,-7.78); g.add(menuPlate);
       // Two warm pendant bulbs over the counter, each with its own
@@ -2679,6 +2737,12 @@ function buildInteriors(){
 
 /* ---------- Movement and collision ---------- */
 var buildingBoxes=[];
+/* Fix 3 (2026-11-15): tree footprints for the CAMERA only. The
+   resolver and its helpers consult these so the camera never
+   parks inside a crown or glides through foliage; they are never
+   added to buildingBoxes, so walking through a tree is unchanged
+   (players have always been able to step past them). */
+var treeBoxes=[];
 venueKeys.forEach(function(key){ var v=VENUES[key]; buildingBoxes.push({x1:v.x-v.w/2-0.4,x2:v.x+v.w/2+0.4,z1:v.z-v.d/2-0.4,z2:v.z+v.d/2+0.4}); });
 function collide(pos, inside){
   if(inside){
@@ -2762,8 +2826,9 @@ var lastCamInputAt=0;
    player standing against a wall does not make every direction
    read as blocked: only a genuine crossing counts. */
 function camSegBlocked(x0, z0, x1, z1){
-  for(var i=0;i<buildingBoxes.length;i++){
-    var b=buildingBoxes[i];
+  var boxes=buildingBoxes.concat(treeBoxes);
+  for(var i=0;i<boxes.length;i++){
+    var b=boxes[i];
     var dx=x1-x0, dz=z1-z0, t0=0, t1=1, ok=true;
     if(Math.abs(dx)<1e-9){ if(x0<b.x1 || x0>b.x2) ok=false; }
     else { var ta=(b.x1-x0)/dx, tb=(b.x2-x0)/dx; if(ta>tb){ var tt=ta; ta=tb; tb=tt; } t0=Math.max(t0,ta); t1=Math.min(t1,tb); if(t0>t1) ok=false; }
@@ -2776,8 +2841,9 @@ function camSegBlocked(x0, z0, x1, z1){
   return false;
 }
 function camPointInBuilding(x, z, m){
-  for(var i=0;i<buildingBoxes.length;i++){
-    var b=buildingBoxes[i];
+  var boxes=buildingBoxes.concat(treeBoxes);
+  for(var i=0;i<boxes.length;i++){
+    var b=boxes[i];
     if(x>b.x1-m && x<b.x2+m && z>b.z1-m && z<b.z2+m) return true;
   }
   return false;
@@ -2808,13 +2874,18 @@ function resolveCamPos(cx, cy, cz){
       while(camYaw<-Math.PI) camYaw+=Math.PI*2;
       camYaw=clamp(camYaw, -0.9, 0.9);
       camPitch=clamp(camPitch, 0.34, 0.66);
-      var useDist=7.5;
-      // The shared zoom value itself is reset to the room framing
-      // here, every frame, not just worked around: a scroll or
-      // pinch made indoors, or a zoom carried in from the street
-      // or another room, is discarded from the state itself, so
-      // nothing downstream (a snap, a save flush, the walk back
-      // to the centre) can ever read a close distance back out.
+      // The distance is the player's, within the close room range
+      // (5-10 m): a scroll or pinch moves it, and the framing
+      // follows. Anything outside the range (a zoom carried in
+      // from the street, a stale value) is clamped back into it
+      // here, every frame, so nothing downstream (a snap, a save
+      // flush, the walk back to the centre) can ever read a
+      // collapsed or far distance back out.
+      var useDist=clamp(camDist, 5, 10);
+      // The shared zoom value itself is kept inside the room range
+      // here, every frame, not just worked around: the 30 s idle
+      // restore still returns it to the 7.5 m room framing, and a
+      // reset does the same.
       camDist=useDist;
       // The position is a pure function of the player's spot and
       // the banded orbit, recomputed here: nothing about the last
@@ -2823,14 +2894,22 @@ function resolveCamPos(cx, cy, cz){
       cx=camTarget.x + Math.sin(camYaw)*hh;
       cz=camTarget.z + Math.cos(camYaw)*hh;
       cy=camTarget.y + vv;
-      // Outside the room, always: beyond the door wall (hd is the
-      // player side clamp, the wall itself stands 0.8 past it, and
-      // the camera keeps 1.9 of clearance beyond the wall), within
-      // the room's own width sideways so the camera never lines up
-      // outside a side wall (a side wall can neither fill the frame
-      // nor hide the player behind it), and in a height band that
-      // looks into the room, never down its chimney.
-      cz=Math.max(cz, cig.oz + (cig.hd||7.2) + 3.4);
+      // Fix 3 (2026-11-15): the camera may sit inside the room now
+      // (north of the door wall), following the player at the room
+      // distance, so the framing stays close wherever Alex stands
+      // instead of stretching to ~18 m (an 8.5% character) when
+      // Alex is at the far wall. The old porch clamp forced the
+      // camera south of the door wall on every frame, which is
+      // also why the framing swung 8.5-20% with no input and why
+      // the 30 s idle restore looked like a snap: the distance
+      // was a function of where Alex stood, not of the zoom. The
+      // camera never passes the north wall (1 m of clearance),
+      // never lines up outside a side wall, and stays in a height
+      // band that looks into the room. There is no ceiling and the
+      // furniture tops out well below the camera, so sitting
+      // inside the room never puts a wall or a roof between the
+      // camera and the player.
+      cz=clamp(cz, cig.oz-(cig.hd||7.2)-1.0, cig.oz+(cig.hd||7.2)+3.4);
       cx=clamp(cx, cig.ox-(cig.hw||10.2)+0.3, cig.ox+(cig.hw||10.2)-0.3);
       cy=clamp(cy, 3.6, 7.6);
       // The floor on distance, enforced by pushing further out
@@ -2869,6 +2948,20 @@ function resolveCamPos(cx, cy, cz){
             var mm=Math.min(dl,dr,dn,df);
             if(mm===dl) cx=b.x1-m; else if(mm===dr) cx=b.x2+m; else if(mm===dn) cz=b.z1-m; else cz=b.z2+m;
           }
+        }
+      }
+    }
+    // Fix 3 (2026-11-15): the same push-out for trees, below
+    // crown height only. A camera swung into a crown used to fill
+    // the frame with foliage for a moment; above the crowns the
+    // camera flies over them, so no push is needed there.
+    if(cy<5.5){
+      for(var ti=0; ti<treeBoxes.length; ti++){
+        var tb=treeBoxes[ti], tm=0.7;
+        if(cx>tb.x1-tm && cx<tb.x2+tm && cz>tb.z1-tm && cz<tb.z2+tm){
+          var tdl=cx-(tb.x1-tm), tdr=(tb.x2+tm)-cx, tdn=cz-(tb.z1-tm), tdf=(tb.z2+tm)-cz;
+          var tmm=Math.min(tdl,tdr,tdn,tdf);
+          if(tmm===tdl) cx=tb.x1-tm; else if(tmm===tdr) cx=tb.x2+tm; else if(tmm===tdn) cz=tb.z1-tm; else cz=tb.z2+tm;
         }
       }
     }
@@ -2974,7 +3067,7 @@ var CAM_WIDE_ROOM={ yaw:0.15, pitch:0.5, dist:7.5 };
    range, and a reset returns here. */
 function defaultStreetDist(){
   var a=innerWidth/Math.max(1,innerHeight);
-  if(a<0.8) return 5;
+  if(a<0.8) return 4.5;
   if(a<1.1) return 7;
   return CAM_WIDE_STREET.dist;
 }
@@ -2982,6 +3075,12 @@ function resetCameraWide(){
   var w=(typeof currentLoc!=="undefined" && currentLoc!=="street")? CAM_WIDE_ROOM : CAM_WIDE_STREET;
   camYaw=w.yaw; camPitch=w.pitch; camDist=w.dist;
   if(w===CAM_WIDE_STREET) camDist=defaultStreetDist();
+  // Fix 7 (2026-11-15): portrait phones get the closest indoor
+  // framing by default. The portrait vertical FOV is ~98 deg, so
+  // the 7.5 m room default leaves the character at ~9% of the
+  // viewport; 5 m is the indoor zoom floor, so this is the closest
+  // the resolver allows.
+  else if(innerWidth/Math.max(1,innerHeight)<0.8) camDist=5;
   if(typeof snapCamera==="function") snapCamera();
 }
 /* Where the player stood inside a room when the game was saved,
@@ -3763,7 +3862,7 @@ function runActivity(act, venueKey, station){
     busy=true;
     var ig=interiorGroups[venueKey];
     var pose=null, spot=null;
-    if(act.sleep){ pose="sleep"; }
+    if(act.sleep){ pose="sleep"; spot=ig.spots.sleep||ig.spots.sit; }
     else if(act.dance){ pose="dance"; spot=ig.spots.dance; }
     else if(venueKey==="gym"){ pose="workout"; spot=ig.spots.work; }
     else if(act.name.indexOf("Shower")>=0){ pose=null; spot=ig.spots.sit; }
@@ -3806,6 +3905,13 @@ function runActivity(act, venueKey, station){
           toast("You wake up on Day "+S.day+". Coffee first, then the day.");
           addLog("Slept through to Day "+S.day+" morning.");
           advanceTutorial("sleep");
+          // Fix 9 (2026-11-15): wake beside the bed, not on it.
+          // The sleep spot is on the mattress (the pose lies
+          // there), so standing up from it left Alex on top of the
+          // bed. A step south puts Alex on the floor beside it;
+          // S.insidePos is re-recorded from the player every frame,
+          // so a reload lands on the floor too.
+          if(spot) player.position.set(spot.x, 0, spot.z+1.6);
         } else {
           applyFx(act.fx);
           if(act.skill) for(var k in act.skill) gainSkill(k, act.skill[k]);
@@ -4263,17 +4369,25 @@ function setupInput(){
     // joystick, which already refuses input while a sheet is open.
     if(wasTap && !busy && !overlayUp()) tapToMove(e);
   });
-  // Zoom is a street only gesture. Indoors the framing is the
-  // fixed wide room view, so a scroll or pinch made in a room
-  // restores that wide view on the spot (distance, orbit, and all)
-  // and can never be carried into the next room or save.
-  cv.addEventListener("wheel", function(e){ lastCamInputAt=performance.now(); if(currentLoc!=="street"){ resetCameraWide(); return; } camDist=clamp(camDist+e.deltaY*0.02, 4, 24); }, { passive:true });
+  // Zoom works everywhere: on the street within 4-24 m, indoors
+  // within the close room range (5-10 m). The resolver clamps the
+  // indoor distance every frame, so a zoom can never park the
+  // camera close enough to collapse the view or carry a street
+  // zoom into a room. (Fix 3, 2026-11-15: the old code reset the
+  // whole camera indoors, which is what made a scroll or pinch
+  // read as a snap to wide.)
+  cv.addEventListener("wheel", function(e){ lastCamInputAt=performance.now(); if(currentLoc!=="street"){ camDist=clamp(camDist+e.deltaY*0.02, 5, 10); return; } camDist=clamp(camDist+e.deltaY*0.02, 4, 24); }, { passive:true });
   var pinchD=0;
   cv.addEventListener("touchmove", function(e){
     if(e.touches.length===2){
       lastCamInputAt=performance.now();
-      if(currentLoc!=="street"){ resetCameraWide(); pinchD=0; return; }
       var d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+      if(currentLoc!=="street"){
+        // Fix 3 (2026-11-15): pinch zooms indoors too, within the
+        // close room range, instead of snapping the camera wide.
+        if(pinchD) camDist=clamp(camDist-(d-pinchD)*0.03, 5, 10);
+        pinchD=d; return;
+      }
       if(pinchD) camDist=clamp(camDist-(d-pinchD)*0.03, 4, 24);
       pinchD=d;
     }
