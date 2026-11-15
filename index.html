@@ -32,14 +32,24 @@
   .chip b{font-size:15px;}
   .chip .sub{color:var(--muted);font-size:11px;display:block;}
   #moneyChip b{color:var(--accent);}
-  #needBar{display:flex;gap:6px;flex-wrap:wrap;pointer-events:auto;}
+  /* The needs row is kept clear of the photo/music column on the
+     right, so nothing under it can be tapped by accident. */
+  #needBar{display:flex;gap:6px;flex-wrap:wrap;pointer-events:auto;padding-right:54px;}
   .need{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:5px 8px;min-width:96px;flex:1 1 96px;max-width:150px;}
   .need label{font-size:11px;font-weight:700;letter-spacing:.04em;display:flex;justify-content:space-between;color:var(--muted);}
   .need label span{color:var(--text);}
   .track{height:7px;background:#0a0e14;border-radius:99px;margin-top:3px;overflow:hidden;}
   .fill{height:100%;border-radius:99px;transition:width .35s ease;}
-  #hudBtns{display:flex;gap:6px;margin-left:auto;pointer-events:auto;}
+  /* UI preview: the HUD face is a compact top row only (Day/Time,
+     Money, Menu). Career, Veteran 500, Story, Guide, My Life,
+     Home and More, and Save live in the Menu sheet; the score and
+     multiplayer chips move there too. The buttons stay in the DOM
+     so the Menu rows can proxy-click them and every existing
+     handler keeps working untouched. */
+  #hudBtns{display:none;}
   #hudBtns button{padding:8px 10px;font-size:13px;}
+  #scoreChip,#netChip{display:none;}
+  #btnMenu{min-height:44px;min-width:64px;font-weight:800;border-color:var(--accent);}
   #hudTop{padding-right:118px;}
 
   /* HUD hide / show toggle: always visible, even when the HUD is hidden */
@@ -98,6 +108,7 @@
   .sheet .closeRow{display:flex;justify-content:space-between;align-items:center;gap:10px;}
   .actGrid{display:flex;flex-direction:column;gap:8px;margin-top:10px;}
   .actBtn{display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:left;padding:11px 13px;}
+  .menuMeta{font-size:13px;color:var(--muted);}
   .actBtn .meta{font-size:12px;color:var(--muted);font-weight:500;text-align:right;white-space:nowrap;}
   .actBtn .name{font-size:14.5px;}
   .actBtn .desc{display:block;font-size:12px;color:var(--muted);font-weight:500;margin-top:1px;}
@@ -172,7 +183,16 @@
   .logItem b{color:var(--text);}
   #stationBtn,#actBtn{display:none;}
   #interactBtn{display:none;}
-  #questBar{position:fixed;left:50%;transform:translateX(-50%);top:calc(122px + env(safe-area-inset-top));background:rgba(24,33,48,.94);border:1px solid var(--accent);color:var(--text);padding:7px 14px;border-radius:99px;font-size:12.5px;font-weight:700;z-index:19;display:none;max-width:94vw;text-align:center;box-shadow:0 6px 18px rgba(0,0,0,.4);}
+  #questBar{position:fixed;left:50%;transform:translateX(-50%);top:calc(122px + env(safe-area-inset-top));background:rgba(24,33,48,.94);border:1px solid var(--accent);color:var(--text);padding:7px 14px;border-radius:99px;font-size:12.5px;font-weight:700;z-index:19;display:none;max-width:94vw;text-align:center;box-shadow:0 6px 18px rgba(0,0,0,.4);cursor:pointer;}
+  /* UI preview: the objective is one short line, truncated with
+     an ellipsis when long; tapping the pill expands it in place
+     to the full text, with a Goals & Places button inside the
+     expanded pill. */
+  #questText{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  #questBar.expanded{white-space:normal;border-radius:14px;text-align:left;max-height:140px;overflow-y:auto;}
+  #questBar.expanded #questText{white-space:normal;}
+  #questGoalsBtn{display:none;margin-top:8px;width:100%;min-height:44px;}
+  #questBar.expanded #questGoalsBtn{display:block;}
   .fxFloat{position:fixed;left:50%;bottom:250px;transform:translateX(-50%);font-size:16px;font-weight:800;z-index:45;pointer-events:none;animation:fxUp 1.7s ease forwards;text-shadow:0 2px 8px rgba(0,0,0,.7);white-space:nowrap;}
   @keyframes fxUp{from{opacity:0;margin-bottom:0;}15%{opacity:1;}to{opacity:0;margin-bottom:56px;}}
   .guideCtl{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0;}
@@ -225,22 +245,35 @@
        packed into slim rows so the stack stops covering the 3D view,
        and the quest tracker gets clear space of its own below it. */
     #hud{gap:5px;padding:calc(6px + env(safe-area-inset-top)) 8px 6px;}
-    #hudTop{gap:5px;}
+    /* UI preview: the top row is Day/Time, Money, Menu only, and
+       stops short of the HUD-hide toggle's column. The toggle is
+       icon-only on phones so it never crowds the row. */
+    #hudTop{gap:5px;padding-right:54px;}
+    #hudToggle{padding:9px 11px;}
+    #hudToggle .hudToggleLbl{display:none;}
     .chip{padding:4px 6px;font-size:11.5px;border-radius:10px;line-height:1.2;}
     .chip b{font-size:12.5px;}
-    .chip .sub{font-size:9.5px;overflow-wrap:anywhere;}
+    .chip .sub{font-size:9.5px;overflow-wrap:anywhere;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
     #hudTop .chip{flex:1 1 0;min-width:0;}
-    /* The nav row takes the full width under the chips (the extra
-       basis reaches past the toggle inset, which only guards the
-       chip row), and stops short of the photo button's column. */
+    /* The nav row is hidden in the UI preview: its buttons live in
+       the Menu sheet instead. The rules below are kept so the
+       hidden row can never leak back onto the phone HUD. */
     #hudBtns{flex:0 0 calc(100% + 118px);flex-wrap:nowrap;gap:4px;margin-left:0;padding-right:54px;}
     #hudBtns button{flex:1 1 0;min-width:0;padding:6px 1px;font-size:10.5px;line-height:1.15;overflow-wrap:anywhere;}
-    #needBar{flex-wrap:nowrap;gap:4px;}
-    .need{flex:1 1 0;min-width:0;padding:4px 5px;border-radius:8px;}
-    .need label{font-size:9.5px;}
-    .need .track{height:5px;margin-top:2px;}
-    #locBanner{top:calc(176px + env(safe-area-inset-top));}
-    #questBar{top:calc(218px + env(safe-area-inset-top));font-size:11.5px;}
+    /* UI preview compact needs: slim bars only, in a 44px row;
+       tapping the row expands it to full labels and values. */
+    #needBar{flex-wrap:nowrap;gap:4px;min-height:44px;cursor:pointer;}
+    .need{flex:1 1 0;min-width:0;padding:4px 5px;border-radius:8px;display:flex;flex-direction:column;justify-content:center;}
+    .need label{display:none;font-size:9.5px;}
+    .need .track{height:8px;margin-top:0;}
+    #needBar.needs-expanded .need label{display:flex;}
+    #needBar.needs-expanded .need .track{height:5px;margin-top:2px;}
+    #locBanner{top:calc(112px + env(safe-area-inset-top));}
+    #questBar{top:calc(112px + env(safe-area-inset-top));font-size:11.5px;}
+    /* UI preview: the photo and music buttons move down on phones
+       so they clear the objective pill and the radio toast. */
+    #photoBtn{top:calc(224px + env(safe-area-inset-top));}
+    #musicBtn{top:calc(276px + env(safe-area-inset-top));}
     #moveHint{display:none;}
     #startCard h1{font-size:25px;}
   }
@@ -255,7 +288,11 @@
   #musicBtn.off .spkOff{display:block;}
   #musicBtn:active{transform:scale(.97);}
   #musicBtn:focus-visible{outline:2px solid var(--accent2);outline-offset:2px;}
-  #radioBar{align-self:flex-start;background:var(--panel);border:1px solid var(--line);border-radius:99px;padding:4px 11px;font-size:11.5px;color:var(--muted);pointer-events:none;max-width:min(92vw,430px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  /* UI preview: the radio line is a brief toast, not a permanent
+     HUD row. It sits below the objective pill, shows for a few
+     seconds when the track changes, then hides. */
+  #radioBar{position:fixed;left:50%;transform:translateX(-50%);top:calc(170px + env(safe-area-inset-top));background:var(--panel);border:1px solid var(--line);border-radius:99px;padding:4px 11px;font-size:11.5px;color:var(--muted);pointer-events:none;max-width:min(92vw,430px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;z-index:19;opacity:0;transition:opacity .4s;}
+  #radioBar.show{opacity:1;}
   .volRow{display:flex;align-items:center;gap:12px;margin:8px 0 2px;}
   .volRow label{font-size:13px;color:var(--muted);font-weight:700;white-space:nowrap;}
   .volRow input{flex:1;accent-color:var(--accent);min-height:28px;}
@@ -300,7 +337,8 @@
   <div id="hudTop">
     <div class="chip"><b id="clockLbl">Day 1</b><span class="sub" id="phaseLbl">Morning, 7:00 AM</span></div>
     <div class="chip" id="moneyChip"><b id="moneyLbl">$500</b><span class="sub" id="jobLbl">Unemployed</span></div>
-    <div class="chip"><b id="scoreLbl">Score 0</b><span class="sub">Veteran 500 rank <span id="rankLbl">-</span></span></div>
+    <button id="btnMenu" type="button" aria-label="Open menu">☰ Menu</button>
+    <div class="chip" id="scoreChip"><b id="scoreLbl">Score 0</b><span class="sub">Veteran 500 rank <span id="rankLbl">-</span></span></div>
     <div class="chip" id="netChip" role="button" tabindex="0" title="Multiplayer lobby"><b><span id="netDot"></span><span id="netLbl">Offline</span></b><span class="sub" id="netSub">Tap for the multiplayer lobby</span></div>
     <div id="hudBtns">
       <button id="btnCareer" type="button">Career</button>
@@ -312,12 +350,12 @@
       <button id="btnSave" type="button">Save</button>
     </div>
   </div>
-  <div id="needBar"></div>
+  <div id="needBar" role="button" tabindex="0" aria-label="Needs: tap to show full labels and values"></div>
   <div id="radioBar"><span id="radioNow">Maple Street Radio 98.5</span></div>
 </div>
 
 <div id="locBanner"></div>
-<div id="questBar"></div>
+<div id="questBar"><span id="questText"></span><button id="questGoalsBtn" type="button">Goals &amp; Places →</button></div>
 <div id="toasts"></div>
 
 <div id="moveHint">Drag to orbit camera. Tap ground or a building to walk there. WASD works on desktop. E interacts when a prompt shows.</div>
@@ -484,6 +522,29 @@
   <h3>Feedback</h3>
   <p>Spotted a bug, or have an idea for the game? Tell us. This opens your email app with our address and the subject filled in; nothing is sent until you tap send there. No account needed.</p>
   <div class="mpRowBtns"><a class="fbBtn" href="mailto:hello@gatherbuzzer.com?subject=Veteran%20Life%20feedback">Give feedback</a></div>
+</section>
+
+<!-- UI preview menu sheet: everything the compact top row no
+     longer carries. Every row proxy-clicks the original button,
+     so no panel or handler changes. -->
+<section class="sheet" id="menuSheet" aria-label="Menu">
+  <div class="closeRow"><h2>Menu</h2><button class="ghost" data-close="menuSheet" type="button">Close</button></div>
+  <p class="menuMeta"><span id="menuRankLbl">Not ranked yet</span> · <span id="menuNetLbl">Offline</span></p>
+  <div class="actGrid">
+    <button id="menuGoals" class="actBtn" type="button"><span class="name">📍 Goals &amp; Places</span></button>
+    <button id="menuCareer" class="actBtn" type="button"><span class="name">💼 Career</span></button>
+    <button id="menuBoard" class="actBtn" type="button"><span class="name">🏆 Veteran 500</span></button>
+    <button id="menuStory" class="actBtn" type="button"><span class="name">📖 Story</span></button>
+    <button id="menuGuide" class="actBtn" type="button"><span class="name">📘 Guide</span></button>
+    <button id="menuLife" class="actBtn" type="button"><span class="name">🧑 My Life</span></button>
+    <button id="menuHub" class="actBtn" type="button"><span class="name">🏠 Home and More</span></button>
+    <button id="menuMp" class="actBtn" type="button"><span class="name">👥 Multiplayer</span></button>
+    <button id="menuSave" class="actBtn" type="button"><span class="name">💾 Save</span></button>
+    <button id="menuResetCam" class="actBtn" type="button"><span class="name">🎥 Reset Camera</span></button>
+    <button id="menuMute" class="actBtn" type="button"><span class="name">🔊 Sound</span><span class="meta" id="menuMuteMeta">Sound: On</span></button>
+    <button id="menuMusic" class="actBtn" type="button"><span class="name">🎵 Music</span><span class="meta" id="menuMusicMeta">Music: On</span></button>
+    <button id="menuGraphics" class="actBtn" type="button"><span class="name">🖼️ Graphics</span><span class="meta" id="menuGraphicsMeta">Graphics: Medium</span></button>
+  </div>
 </section>
 
 <!-- Modal -->
@@ -2051,7 +2112,7 @@ function fitCamFov(){
   camera.updateProjectionMatrix();
 }
 var player, playerParts, npcs=[], worldGroup, interiorGroups={};
-var camYaw=0.6, camPitch=0.42, camDist=13, camTarget=null;
+var camYaw=0.6, camPitch=0.42, camDist=10, camTarget=null;
 var moveTarget=null, keys={}, joyVec={x:0,y:0};
 /* A tap target the player cannot reach (behind a wall, a room prop,
    or the far side of a doorway) used to hold moveTarget, and the
@@ -2279,8 +2340,60 @@ function buildWorld(){
     box(1.9,0.5,0.1,0x7a5a38,s[0],0.85,s[1]+(s[1]>0?0.26:-0.26),worldGroup,1);
   });
   // A bench by the diner door, a place to sit on the way there.
-  box(1.9,0.12,0.5,0x7a5a38, 21,0.5,19.5, worldGroup,1);
-  box(1.9,0.5,0.1,0x7a5a38, 21,0.85,19.76, worldGroup,1);
+  // It sits south of the diner path, facing the door, so it never
+  // blocks the walk from the sidewalk to the door.
+  box(1.9,0.12,0.5,0x7a5a38, 21,0.5,20.8, worldGroup,1);
+  box(1.9,0.5,0.1,0x7a5a38, 21,0.85,21.06, worldGroup,1);
+
+  // UI preview: the route home -> Maple Street -> Dot's Diner is
+  // paved end to end, so the walk reads as a route, not open grass.
+  // The home path runs from the apartment door to the north
+  // sidewalk; the diner path runs from the east sidewalk to the
+  // diner door. Both stop at the sidewalk edge, so no two flat
+  // slabs share a top face and z-fight.
+  box(2.2,0.09,8.1,0xb9bec4, -26,0.045,-12.15, worldGroup,1);   // home path
+  box(16.9,0.09,2.2,0xb9bec4, 16.55,0.045,18.6, worldGroup,1); // diner path
+  // Two more streetlights on the route: one where the home path
+  // meets the sidewalk, one where the diner path meets the east
+  // sidewalk. Their bulbs join lampBulbs, so the evening pass
+  // lights them with the rest.
+  [[-26,7],[7,20]].forEach(function(s){
+    box(0.18,3.4,0.18,0x2c313a,s[0],1.7,s[1],worldGroup,0.7);
+    var bulb=new THREE.Mesh(new THREE.SphereGeometry(0.22,10,8), new THREE.MeshStandardMaterial({color:0xffe9a8, emissive:0xffca55, emissiveIntensity:0.4}));
+    bulb.position.set(s[0],3.5,s[1]); worldGroup.add(bulb); lampBulbs.push(bulb);
+  });
+  // Bins, planters, and bike racks beside the doors, clear of the
+  // walking line: nothing here has collision, and nothing sits on
+  // a path, so nobody can be trapped or walk through a prop.
+  // Bins (body + lid) by the diner, apartment, and gym doors.
+  [[29.5,18.8],[-23.5,-15.5],[-24.5,20.5]].forEach(function(s){
+    box(0.7,0.9,0.7,0x3a4a3a,s[0],0.45,s[1],worldGroup,0.8);
+    box(0.76,0.12,0.76,0x2c3a2c,s[0],0.96,s[1],worldGroup,0.8);
+  });
+  // Planters flanking the diner door, south of the path.
+  [[22.8,20.5],[27.2,20.5]].forEach(function(s){
+    box(1.1,0.5,1.1,0x8a6f4d,s[0],0.25,s[1],worldGroup,0.9);
+    box(0.9,0.35,0.9,0x3f7a37,s[0],0.65,s[1],worldGroup,1);
+  });
+  // Bike racks: a low rail on two posts, by the diner and the
+  // apartment. One rack each, off the path.
+  [[29.5,20.8],[-22.5,-14.5]].forEach(function(s){
+    box(0.08,0.8,0.08,0x4a5560,s[0]-0.7,0.4,s[1],worldGroup,0.6);
+    box(0.08,0.8,0.08,0x4a5560,s[0]+0.7,0.4,s[1],worldGroup,0.6);
+    box(1.6,0.08,0.08,0x4a5560,s[0],0.8,s[1],worldGroup,0.6);
+  });
+  // Bushes break up the big empty grass quadrants, kept clear of
+  // every path, sidewalk, road, and building.
+  [[-16,-14],[-16,22],[16,-14],[16,22],[-36,-16],[36,16],[-16,32],[14,-32]].forEach(function(s){
+    var bush=new THREE.Mesh(new THREE.SphereGeometry(0.7,10,8), mat(0x3f7a37,1));
+    bush.position.set(s[0],0.5,s[1]); bush.castShadow=true; worldGroup.add(bush);
+  });
+  // Flower beds: a soil bed with a bright planted top, in the two
+  // grass quadrants the route passes.
+  [[-14,10],[14,-10]].forEach(function(s){
+    box(3,0.18,1.2,0x4a3220,s[0],0.09,s[1],worldGroup,1);
+    box(2.8,0.25,1.0,0xe86a8a,s[0],0.3,s[1],worldGroup,1);
+  });
 
   // Buildings (exteriors)
   venueKeys.forEach(function(key){
@@ -2293,6 +2406,18 @@ function buildWorld(){
     var dz = v.d/2;
     box(1.5,2.6,0.18,0x2b2118, 0,1.3, dz+0.06, g, 0.7);
     box(0.5,0.5,0.1,0xffd873, 0,2.15, dz+0.16, g, 0.4);
+    // Door frame, base plinth, and awning: a light surround panel
+    // behind the door slab so every entrance reads at a glance, a
+    // low stone band around the foot of the building, and a small
+    // canopy over the door in the roof color. Three meshes per
+    // building, reusing the cached box and material helpers.
+    // The panel sits 0.02 behind the window fronts (windows sit at
+    // dz+0.03 on a 0.08 slab), so where a window's edge meets the
+    // frame on the 14-wide buildings the two faces never share a
+    // plane and cannot z-fight.
+    box(2.1,3.0,0.1,0xe8dcc0, 0,1.5, dz, g, 0.85);
+    box(v.w+0.3,0.35,v.d+0.3,0x8a7a5a, 0,0.175, 0, g, 0.9);
+    box(2.6,0.12,1.2, v.roof, 0,3.05, dz+0.6, g, 0.9);
     // Windows use the shared glass material, so they catch the light
     // and glow warm from inside after dark.
     var winGeo=boxGeo(1.3,1.1,0.08);
@@ -2351,9 +2476,15 @@ function buildInteriors(){
     // Warm room light and an open top: no ceiling beams across the
     // room, so the porch camera outside the low wall always sees the
     // whole furnished interior.
-    var roomLight=new THREE.PointLight(key==="neon"?0x9a6cff:0xffe2b0, key==="neon"?0.7:0.95, 34);
+    // UI preview: the diner reads warmer than the other rooms, so
+    // talking, sitting, and eating read at phone size. Its light is
+    // a deeper amber (0xffc98a) at a higher base (1.25); the
+    // evening lerp still multiplies the base by 1.3, so the diner
+    // reaches 1.625 after dark. Other rooms and the neon club keep
+    // their existing light.
+    var roomLight=new THREE.PointLight(key==="neon"?0x9a6cff:(key==="diner"?0xffc98a:0xffe2b0), key==="neon"?0.7:(key==="diner"?1.25:0.95), 34);
     roomLight.position.set(0,3.4,0); g.add(roomLight);
-    roomLights.push({ light:roomLight, base:(key==="neon"?0.7:0.95) });
+    roomLights.push({ light:roomLight, base:(key==="neon"?0.7:(key==="diner"?1.25:0.95)) });
     // Exit door marker on south wall
     interiorGroups[key].doorMesh=box(1.6,2.7,0.2,0x27ae60, 0,1.35, D/2-0.12, g,0.6);
     var spots=[];
@@ -2431,6 +2562,26 @@ function buildInteriors(){
     if(key==="diner"){
       for(var bI=0;bI<3;bI++){ table(-6+bI*5.5,-3.5,2.0,1.1,0xc7a86b); chair(-6.7+bI*5.5,-2.6); chair(-5.3+bI*5.5,-2.6); }
       box(9,1.05,1.1,0x8a5a3b, 0,0.55,5.2, g,0.8); // counter
+      // UI preview: the counter, the exit, and the menu board are
+      // labeled, so the room reads at a glance. ORDER HERE faces
+      // the room from the counter's north face; EXIT sits on the
+      // green door; MENU sits on the board over the booths. Each
+      // plate sits 0.02 in front of the face it labels, so no two
+      // faces share a plane.
+      var orderPlate=makeSignPlate("ORDER HERE", 2.2);
+      orderPlate.position.set(0,0.6,4.63); orderPlate.rotation.y=Math.PI; g.add(orderPlate);
+      var exitPlate=makeSignPlate("EXIT", 1.2);
+      exitPlate.position.set(0,2.2,7.76); exitPlate.rotation.y=Math.PI; g.add(exitPlate);
+      var menuPlate=makeSignPlate("MENU", 2.0);
+      menuPlate.position.set(0,2.75,-7.78); g.add(menuPlate);
+      // Two warm pendant bulbs over the counter, each with its own
+      // material, registered in lampBulbs so the evening pass
+      // brightens them with the streetlights.
+      [-2.2,2.2].forEach(function(px){
+        box(0.05,0.6,0.05,0x2c313a, px,2.9,5.2, g,0.6);
+        var pb=new THREE.Mesh(new THREE.SphereGeometry(0.16,10,8), new THREE.MeshStandardMaterial({color:0xffe9a8, emissive:0xffb85c, emissiveIntensity:0.4}));
+        pb.position.set(px,2.55,5.2); g.add(pb); lampBulbs.push(pb);
+      });
       for(var sI=0;sI<4;sI++){ box(0.55,0.75,0.55,0xa03d4e,-3.6+sI*2.4,0.4,5.2,g,0.7); }
       box(2.2,1.6,0.7,0xe8d9b0, 8.2,0.8,-6.2, g,0.4); // pie case
       booth(-6.5,-6.1); booth(0.2,-6.1); booth(5.6,-6.1); // booths along the north wall
@@ -2546,10 +2697,10 @@ function collide(pos, inside){
     }
   }
 }
-var streetNodes=[[-20,7],[20,7],[-20,-7],[20,-7],[7,20],[-7,20],[7,-20],[-7,-20],[0,7],[0,-7],[34,7],[-34,-7],[-34,7],[34,-7],[7,34],[-7,-34]];
+var streetNodes=[[-20,7],[20,7],[-20,-7],[20,-7],[7,20],[-7,20],[7,-20],[-7,-20],[0,7],[0,-7],[34,7],[-34,-7],[-34,7],[34,-7],[7,34],[-7,-34],[25,18.6],[-26,-11]];
 /* Benches neighbors sit on: [x, z, facing]. Sitting is part of the
    routine, not a stuck state: the sit timer below stands them back up. */
-var benchSpots=[[-4,9,Math.PI],[4,9,Math.PI],[-4,-9,0],[4,-9,0],[21,19.5,Math.PI]];
+var benchSpots=[[-4,9,Math.PI],[4,9,Math.PI],[-4,-9,0],[4,-9,0],[21,20.8,Math.PI]];
 function nearestNode(x,z){
   var best=null,bd=1e9;
   streetNodes.forEach(function(n){ var d=(n[0]-x)*(n[0]-x)+(n[1]-z)*(n[1]-z); if(d<bd){bd=d;best=n;} });
@@ -2595,7 +2746,7 @@ function nearestNode(x,z){
    of every wall, at the chosen distance, no matter where the
    player stands or how they drag the orbit. */
 var camHoldT=0;
-var CAM_MIN_IN=6.4; // closest the follow loop ever tolerates before snapping back to the resolved view
+var CAM_MIN_IN=5.0; // closest the follow loop ever tolerates before snapping back to the resolved view
 /* When the player last steered the camera on purpose (a drag orbit,
    a scroll, a pinch, a gamepad nudge). Indoors, a few seconds with
    no camera input at all means the wide room view restores itself:
@@ -2645,7 +2796,10 @@ function resolveCamPos(cx, cy, cz){
       // down to a mild high angle, never flat and never top down.
       // The distance is not in the band because it is not the
       // player's to set indoors at all: it is the room framing,
-      // fixed wide. Scroll, pinch, and drag still orbit the view,
+      // fixed closer than the old wide view (7.5 m instead of 11)
+      // so talking, sitting, and eating read at phone size, while
+      // the whole room, its stations, and the green exit door
+      // still fit. Scroll, pinch, and drag still orbit the view,
       // but no gesture, and no zoom carried in from the street or
       // left over from another room, can park the camera close;
       // the framing at the centre of the room is the entry
@@ -2654,7 +2808,7 @@ function resolveCamPos(cx, cy, cz){
       while(camYaw<-Math.PI) camYaw+=Math.PI*2;
       camYaw=clamp(camYaw, -0.9, 0.9);
       camPitch=clamp(camPitch, 0.34, 0.66);
-      var useDist=11;
+      var useDist=7.5;
       // The shared zoom value itself is reset to the room framing
       // here, every frame, not just worked around: a scroll or
       // pinch made indoors, or a zoom carried in from the street
@@ -2681,10 +2835,14 @@ function resolveCamPos(cx, cy, cz){
       cy=clamp(cy, 3.6, 7.6);
       // The floor on distance, enforced by pushing further out
       // over the porch: with the player against the door wall this
-      // is the step that keeps the wide view instead of a close up.
+      // is the step that keeps the closer room view instead of a
+      // close up. The floor is 5.5 m, under the 7.5 m room
+      // framing, so the resolver can sit the camera a little
+      // closer when the player crowds the door wall without ever
+      // collapsing onto them.
       var dx=cx-camTarget.x, dy=cy-camTarget.y, dz=cz-camTarget.z;
       var d=Math.sqrt(dx*dx+dy*dy+dz*dz), guard=0;
-      while(d<7.2 && guard<8){ cz+=(7.2-d)+0.1; dz=cz-camTarget.z; d=Math.sqrt(dx*dx+dy*dy+dz*dz); guard++; }
+      while(d<5.5 && guard<8){ cz+=(5.5-d)+0.1; dz=cz-camTarget.z; d=Math.sqrt(dx*dx+dy*dy+dz*dz); guard++; }
     } else {
       // No room record (never expected): even the raw orbit may
       // not hang high over the player. Cap the height so the view
@@ -2726,7 +2884,7 @@ function resolveCamPos(cx, cy, cz){
     // only: higher up the camera flies over the roofs, where the
     // wide view is already safe and must not be disturbed.
     if(cy<=7.5){
-      var wantH=Math.cos(camPitch)*((typeof camDist!=="undefined")? camDist : 13);
+      var wantH=Math.cos(camPitch)*((typeof camDist!=="undefined")? camDist : 10);
       var odx=cx-px, odz=cz-pz;
       var oh=Math.sqrt(odx*odx+odz*odz);
       if(oh<wantH-0.05 || camSegBlocked(px, pz, cx, cz)){
@@ -2802,11 +2960,28 @@ function camPathNearPoint(x0, z0, x1, z1, px, pz){
    the resolver's fixed room framing exactly, so the snapped
    landing view and the held view are the same view, with no step
    between them for a close framing to hide in. */
-var CAM_WIDE_STREET={ yaw:0.15, pitch:0.42, dist:12 };
-var CAM_WIDE_ROOM={ yaw:0.15, pitch:0.5, dist:11 };
+var CAM_WIDE_STREET={ yaw:0.15, pitch:0.42, dist:10 };
+var CAM_WIDE_ROOM={ yaw:0.15, pitch:0.5, dist:7.5 };
+/* The default street distance is fitted to the screen shape, the
+   same way the FOV is: on a portrait phone the vertical lens is
+   very wide, so a 10 m camera leaves the standing character at
+   roughly 7% of the viewport height and the player reads as tiny.
+   At 5 m on a portrait phone the character is about 15-17% of the
+   height, big enough to read talking, sitting, and eating. On a
+   landscape screen or desktop the lens is narrower, so the same
+   framing needs the longer distance. This is the default only:
+   pinch, wheel, and orbit still move it, within the 4-24 m zoom
+   range, and a reset returns here. */
+function defaultStreetDist(){
+  var a=innerWidth/Math.max(1,innerHeight);
+  if(a<0.8) return 5;
+  if(a<1.1) return 7;
+  return CAM_WIDE_STREET.dist;
+}
 function resetCameraWide(){
   var w=(typeof currentLoc!=="undefined" && currentLoc!=="street")? CAM_WIDE_ROOM : CAM_WIDE_STREET;
   camYaw=w.yaw; camPitch=w.pitch; camDist=w.dist;
+  if(w===CAM_WIDE_STREET) camDist=defaultStreetDist();
   if(typeof snapCamera==="function") snapCamera();
 }
 /* Where the player stood inside a room when the game was saved,
@@ -2906,6 +3081,9 @@ function enterVenue(key){
   // retunes for indoors, and the diner gets its quiet murmur.
   sndAmbient(); sndDoor(); sndDinerAmb(key==="diner");
   saveGame(true);
+  // Entering changes where the objective points: the pill and the
+  // Goals sheet re-read the step against the new location.
+  renderQuest();
 }
 var pendingExit=false, pendingStation=null;
 function requestExit(){
@@ -2931,6 +3109,9 @@ function exitVenue(){
   showLoc("Maple Street");
   sndAmbient(); sndDoor(); sndDinerAmb(false);
   saveGame(true);
+  // Exiting changes where the objective points: the pill and the
+  // Goals sheet re-read the step against the street.
+  renderQuest();
 }
 var locTimer=null;
 function showLoc(txt){
@@ -3285,6 +3466,33 @@ var TUT_STEPS=[
   { id:"sleep", text:"Quest: Go home (blue roof, northwest) and sleep. Your VA claim moves quietly in the background. Follow it in Story." }
 ];
 function tutStep(){ if(!S.tutorial || S.tutorial.done) return null; return TUT_STEPS[S.tutorial.step]||null; }
+/* Location-aware objective text: the same quest step says a different
+   thing depending on where Alex is standing, so the tracker never
+   tells the player to go somewhere they already are, or to do
+   something where they just left. The step's stored text is the
+   fallback: any step with no location rule keeps exactly what it
+   says today. Both renderQuest versions and the Goals & Places
+   hint read through this, so the pill and the sheet always agree. */
+function locStepText(step){
+  if(!step) return "";
+  var t=step.text;
+  if(step.id==="eat"){
+    if(busy && activityPose==="eat") return "Quest: Enjoy your meal.";
+    if(currentLoc==="diner") return "Quest: Find a seat or food station to order.";
+    return "Quest: Return to Dot's Diner for a meal.";
+  }
+  if(step.id==="enter"){
+    if(currentLoc==="diner") return "Quest: You are inside Dot's Diner.";
+    if(currentLoc!=="street") return "Quest: Head outside, then walk into Dot's Diner.";
+    return t;
+  }
+  if(step.id==="sleep"){
+    if(busy && activityPose==="sleep") return "Quest: Sleeping until morning.";
+    if(currentLoc==="home") return "Quest: Sleep in your bed.";
+    return t;
+  }
+  return t;
+}
 /* The guided diner quest runs alongside the first day tutorial:
    talk to Dot, then eat something at her diner, in either order:
    a meal eaten before the conversation still counts once the
@@ -3301,10 +3509,18 @@ function dinerQuestText(){
   // The pill shows only the step that is live right now: the Talk
   // step used to trail "Next: Eat something", so mid quest the
   // pill read as two steps at once. The Eat step is shown when it
-  // becomes the live one.
-  return S.dinerQuest.step===0
-    ? "Quest: Talk to Dot at Dot's Diner."
-    : "Quest: Eat something at Dot's Diner.";
+  // becomes the live one. Both steps are location-aware, like the
+  // tutorial steps: outside the diner they point back to it, and
+  // inside they say what to do there. While a meal is being eaten
+  // the instruction is simply to enjoy it.
+  if(S.dinerQuest.step===0){
+    return currentLoc==="diner"
+      ? "Quest: Talk to Dot."
+      : "Quest: Return to Dot's Diner and talk to Dot.";
+  }
+  if(busy && activityPose==="eat") return "Quest: Enjoy your meal.";
+  if(currentLoc==="diner") return "Quest: Find a seat or food station to order.";
+  return "Quest: Return to Dot's Diner for a meal.";
 }
 function advanceDinerQuest(evt){
   if(!S.dinerQuest || S.dinerQuest.done) return;
@@ -3334,11 +3550,11 @@ function renderQuest(){
   var q=$("questBar"); if(!q) return;
   var parts=[];
   var st=tutStep();
-  if(st) parts.push(st.text);
+  if(st) parts.push(locStepText(st));
   var dq=dinerQuestText();
   if(dq) parts.push(dq);
-  if(parts.length){ q.style.display="block"; q.textContent=parts.join("  ·  "); }
-  else if(S.arcComplete && S.weeklyGoal){ q.style.display="block"; q.textContent="Weekly goal: "+S.weeklyGoal; }
+  if(parts.length){ q.style.display="block"; $("questText").textContent=parts.join("  ·  "); }
+  else if(S.arcComplete && S.weeklyGoal){ q.style.display="block"; $("questText").textContent="Weekly goal: "+S.weeklyGoal; }
   else q.style.display="none";
 }
 function advanceTutorial(evt){
@@ -3360,7 +3576,7 @@ function advanceTutorial(evt){
     addLog("Finished the guided first day. First win earned.");
     toast("First win: guided first day complete.");
   } else {
-    toast("Quest step done. Next: "+TUT_STEPS[S.tutorial.step].text.replace("Quest: ",""), 4600);
+    toast("Quest step done. Next: "+locStepText(TUT_STEPS[S.tutorial.step]).replace("Quest: ",""), 4600);
   }
   renderQuest(); saveGame(true);
 }
@@ -3562,6 +3778,10 @@ function runActivity(act, venueKey, station){
     if(spot && (pose==="eat"||pose==="sit")) spot=freeSeatFor(venueKey, spot.x, spot.z, spot.ry);
     if(spot){ player.position.set(spot.x,0,spot.z); player.rotation.y=spot.ry||0; moveTarget=null; }
     activityPose=pose;
+    // The objective updates the moment the activity starts, so a
+    // meal reads "Enjoy your meal." and a sleep reads "Sleeping
+    // until morning." while it is happening, not only after.
+    renderQuest();
     // A meal at the diner is visible: plate and mug on the table
     // while eating, cleared when the activity finishes.
     var mealProp=(venueKey==="diner" && pose==="eat" && ig.mealProp) ? ig.mealProp : null;
@@ -3688,6 +3908,14 @@ function buildNeedBar(){
     d.innerHTML="<label>"+n.label+" <span id='nv_"+n.k+"'>0</span></label><div class='track'><div class='fill' id='nf_"+n.k+"' style='background:"+n.color+"'></div></div>";
     bar.appendChild(d);
   });
+  // UI preview: on phones the needs read as a slim bar row; tapping
+  // the row expands it to full labels and values. (Guarded: this
+  // builder runs twice at boot.)
+  if(!bar._toggleWired){
+    bar._toggleWired=true;
+    bar.addEventListener("click", function(){ bar.classList.toggle("needs-expanded"); });
+    bar.addEventListener("keydown", function(e){ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); bar.classList.toggle("needs-expanded"); } });
+  }
 }
 function refreshHUD(){
   $("clockLbl").textContent="Day "+S.day+" · Week "+(Math.floor((S.day-1)/7)+1);
@@ -3710,6 +3938,14 @@ function refreshHUD(){
   // player 3rd.
   var br=(typeof boardRankNow==="function")? boardRankNow() : null;
   $("rankLbl").textContent=br? "#"+br : "-";
+  // UI preview menu mirrors: the rank and multiplayer status the
+  // HUD face no longer shows, plus the sound, music, and graphics
+  // states. The hub buttons stay the source of truth.
+  var mr=$("menuRankLbl"); if(mr) mr.textContent=br? "Rank #"+br : "Not ranked yet";
+  var mn=$("menuNetLbl"); if(mn && $("netLbl")) mn.textContent=$("netLbl").textContent;
+  var mm=$("menuMuteMeta"); if(mm && $("btnMute")) mm.textContent=$("btnMute").textContent;
+  var mmu=$("menuMusicMeta"); if(mmu && $("btnMusic")) mmu.textContent=$("btnMusic").textContent;
+  var mg=$("menuGraphicsMeta"); if(mg && $("btnGraphics")) mg.textContent=$("btnGraphics").textContent;
   NEED_META.forEach(function(n){
     var v=Math.round(S.needs[n.k]);
     var f=$("nf_"+n.k), t=$("nv_"+n.k);
@@ -4031,14 +4267,14 @@ function setupInput(){
   // fixed wide room view, so a scroll or pinch made in a room
   // restores that wide view on the spot (distance, orbit, and all)
   // and can never be carried into the next room or save.
-  cv.addEventListener("wheel", function(e){ lastCamInputAt=performance.now(); if(currentLoc!=="street"){ resetCameraWide(); return; } camDist=clamp(camDist+e.deltaY*0.02, 6.5, 24); }, { passive:true });
+  cv.addEventListener("wheel", function(e){ lastCamInputAt=performance.now(); if(currentLoc!=="street"){ resetCameraWide(); return; } camDist=clamp(camDist+e.deltaY*0.02, 4, 24); }, { passive:true });
   var pinchD=0;
   cv.addEventListener("touchmove", function(e){
     if(e.touches.length===2){
       lastCamInputAt=performance.now();
       if(currentLoc!=="street"){ resetCameraWide(); pinchD=0; return; }
       var d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
-      if(pinchD) camDist=clamp(camDist-(d-pinchD)*0.03, 6.5, 24);
+      if(pinchD) camDist=clamp(camDist-(d-pinchD)*0.03, 4, 24);
       pinchD=d;
     }
   }, { passive:true });
@@ -4357,14 +4593,14 @@ function gameLoop(){
   var camBad=false;
   if(currentLoc!=="street"){
     var bdx=camera.position.x-camTarget.x, bdy=camera.position.y-camTarget.y, bdz=camera.position.z-camTarget.z;
-    // The wide room framing never renders closer than about 10.9
-    // from the player (11 at the centre, wider at the walls).
-    // Anything at 10.2 or closer is a collapsed view, however it
-    // got there: it is snapped back onto the resolved wide view
-    // this same frame. Walking back to the centre of the room
-    // therefore always restores the wide entry view on its own,
-    // with no scrolling and no reload.
-    if(Math.sqrt(bdx*bdx+bdy*bdy+bdz*bdz)<10.2) camBad=true;
+    // The closer room framing never renders nearer than about 5.5
+    // from the player (7.5 at the centre, wider at the walls).
+    // Anything at CAM_MIN_IN or closer is a collapsed view,
+    // however it got there: it is snapped back onto the resolved
+    // room view this same frame. Walking back to the centre of
+    // the room therefore always restores the entry view on its
+    // own, with no scrolling and no reload.
+    if(Math.sqrt(bdx*bdx+bdy*bdy+bdz*bdz)<CAM_MIN_IN) camBad=true;
   } else {
     for(var cbi=0; cbi<buildingBoxes.length; cbi++){
       var cb2=buildingBoxes[cbi];
@@ -5911,6 +6147,19 @@ function radioUpdateUI(){
     mb.setAttribute("aria-label", on?"Mute the radio":"Unmute the radio");
     mb.title=on?"Mute Maple Street Radio":"Play Maple Street Radio";
   }
+  // UI preview: the track line is a brief toast, not a permanent
+  // HUD row. It shows for a few seconds when the track changes
+  // (or the station is toggled), then hides again.
+  var rb=$("radioBar");
+  if(rb){
+    var key=tr.name+"|"+(on?"on":"off");
+    if(radioUpdateUI._last!==key){
+      radioUpdateUI._last=key;
+      rb.classList.add("show");
+      clearTimeout(radioUpdateUI._t);
+      radioUpdateUI._t=setTimeout(function(){ rb.classList.remove("show"); }, 6000);
+    }
+  }
 }
 function radioToggle(){
   S.musicOn=(S.musicOn===false);
@@ -6197,6 +6446,23 @@ function init(){
   });
   $("btnLife").addEventListener("click", function(){ renderLife(); openSheet("lifeSheet"); });
   $("btnHub").addEventListener("click", function(){ renderHub(); openSheet("hubSheet"); });
+  // UI preview menu: the compact top row has one Menu button; every
+  // panel the HUD used to carry lives here. Each row proxy-clicks
+  // the original button, so the existing handlers run untouched.
+  $("btnMenu").addEventListener("click", function(){ openSheet("menuSheet"); });
+  $("menuGoals").addEventListener("click", function(){ var b=$("btnGoals"); if(b) b.click(); });
+  $("menuCareer").addEventListener("click", function(){ $("btnCareer").click(); });
+  $("menuBoard").addEventListener("click", function(){ $("btnBoard").click(); });
+  $("menuStory").addEventListener("click", function(){ $("btnStory").click(); });
+  $("menuGuide").addEventListener("click", function(){ $("btnGuide").click(); });
+  $("menuLife").addEventListener("click", function(){ $("btnLife").click(); });
+  $("menuHub").addEventListener("click", function(){ $("btnHub").click(); });
+  $("menuMp").addEventListener("click", function(){ if(!$("mpName").value) $("mpName").value=S.name||""; mp.chatUnread=0; openSheet("mpSheet"); mpSetStatus(); mpRenderPlayers(); mpScrollChat(); });
+  $("menuSave").addEventListener("click", function(){ $("btnSave").click(); });
+  $("menuResetCam").addEventListener("click", function(){ closeSheets(); resetCameraWide(); toast("Camera reset."); });
+  $("menuMute").addEventListener("click", function(){ $("btnMute").click(); refreshHUD(); });
+  $("menuMusic").addEventListener("click", function(){ $("btnMusic").click(); refreshHUD(); });
+  $("menuGraphics").addEventListener("click", function(){ $("btnGraphics").click(); refreshHUD(); });
   document.querySelectorAll("[data-close]").forEach(function(b){ b.addEventListener("click", closeSheets); });
   $("btnMute").addEventListener("click", function(){ S.muted=!S.muted; sndInit(); sndAmbient(); renderHub(); saveGame(true); toast(S.muted?"Sound off.":"Sound on."); });
   $("btnMusic").addEventListener("click", radioToggle);
@@ -6733,6 +6999,7 @@ if(!window.THREE){
 
   const menuButton = document.createElement("button");
   menuButton.type = "button";
+  menuButton.id = "btnGoals";
   menuButton.textContent = "Goals & Places";
   document.getElementById("hudBtns").prepend(menuButton);
 
@@ -6818,7 +7085,7 @@ if(!window.THREE){
 
       if (active) {
         const hint = document.createElement("p");
-        hint.textContent = step.text.replace("Quest: ", "");
+        hint.textContent = locStepText(step).replace("Quest: ", "");
         row.appendChild(hint);
 
         const destination = destinations[step.id];
@@ -6900,14 +7167,18 @@ if(!window.THREE){
   const questBar = document.getElementById("questBar");
   questBar.setAttribute("role", "button");
   questBar.setAttribute("tabindex", "0");
-  questBar.setAttribute("aria-label", "Open current objectives");
+  questBar.setAttribute("aria-label", "Current objective. Activate to expand the full text.");
   questBar.onclick = showGoals;
 
   questBar.addEventListener("keydown", function (event) {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       event.stopPropagation();
-      showGoals();
+      // UI preview: the pill expands in place; the Goals & Places
+      // sheet stays one tap away from the button inside the
+      // expanded pill, and from the Menu.
+      questBar.classList.toggle("expanded");
+      questBar.setAttribute("aria-expanded", questBar.classList.contains("expanded") ? "true" : "false");
     }
   });
 
@@ -6940,16 +7211,16 @@ if(!window.THREE){
     questBar.style.display = "block";
 
     if (step) {
-      questBar.textContent =
+      document.getElementById("questText").textContent =
         "First day · " +
         (S.tutorial.step + 1) + "/" + TUT_STEPS.length +
-        " · " + step.text.replace("Quest: ", "");
+        " · " + locStepText(step).replace("Quest: ", "");
     } else if (dinerGoal) {
-      questBar.textContent = dinerGoal + " Tap for directions.";
+      document.getElementById("questText").textContent = dinerGoal + " Tap for directions.";
     } else if (S.arcComplete && S.weeklyGoal) {
-      questBar.textContent = "Weekly goal: " + S.weeklyGoal;
+      document.getElementById("questText").textContent = "Weekly goal: " + S.weeklyGoal;
     } else {
-      questBar.textContent =
+      document.getElementById("questText").textContent =
         "Choose your next goal · Explore the neighborhood";
     }
 
@@ -7010,6 +7281,26 @@ if(!window.THREE){
   });
 
   renderQuest();
+})();
+
+// UI preview: the tracker pill is one short line that expands in
+// place. Tapping it (or Enter/Space, which the patch's keydown
+// handler above already maps to the same toggle) shows the full
+// text; the Goals & Places sheet stays one tap away from the
+// button inside the expanded pill, and from the Menu.
+(function(){
+  var qb=document.getElementById("questBar");
+  if(!qb) return;
+  qb.onclick=function(){
+    qb.classList.toggle("expanded");
+    qb.setAttribute("aria-expanded", qb.classList.contains("expanded") ? "true" : "false");
+  };
+  var gb=document.getElementById("questGoalsBtn");
+  if(gb) gb.addEventListener("click", function(e){
+    e.stopPropagation();
+    var goalsBtn=document.getElementById("btnGoals");
+    if(goalsBtn) goalsBtn.click();
+  });
 })();
 </script>
 <script>
