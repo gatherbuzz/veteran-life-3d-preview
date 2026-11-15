@@ -4423,6 +4423,21 @@ function setupInput(){
       }
     }
     var pt=new THREE.Vector3();
+    // Fix3: a tap on the exit door itself exits on one tap. The
+    // ray-plane ground hit for the door's upper half lands by the
+    // counter, ~1.8 from the exit, so the 1.6 ground check below
+    // misses it and the player strands a step short of the doorway
+    // with no walk target left. Raycast the door mesh instead: a
+    // hit on its front or back face (|normal.z|>0.9) is a door tap.
+    // A ray that only grazes the door's top face (normal (0,1,0)),
+    // as a tap on the sit ring can from some angles, is not.
+    if(currentLoc!=="street"){
+      var igD=interiorGroups[currentLoc];
+      if(igD && igD.doorMesh){
+        var dh=ray.intersectObject(igD.doorMesh, false);
+        if(dh.length && dh[0].face && Math.abs(dh[0].face.normal.z)>0.9){ requestExit(); return; }
+      }
+    }
     if(ray.ray.intersectPlane(groundPlane, pt)){
       if(currentLoc!=="street"){
         var ig=interiorGroups[currentLoc];
