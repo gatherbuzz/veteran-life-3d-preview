@@ -2697,7 +2697,11 @@ function buildInteriors(){
     // door sat against solid wall, 5-7 units from where a south
     // walk ends, outside the exit trigger, so Alex could stand
     // pressed against the door panel forever without leaving.
-    interiorGroups[key].spawn={ x:ox, z:oz+D/2-3.4 };
+    // Fix2 (2026-11-15): the diner spawn sat 0.05 north of the
+    // counter's north face, so the counter hid the player's legs
+    // on entry (3/6 visible). The diner spawns 0.9 further north,
+    // where the counter hides only the feet (5/6, head to knees).
+    interiorGroups[key].spawn={ x:ox, z:oz+D/2-(key==="diner"?4.3:3.4) };
     // In world activity stations: a glowing ring on the floor by the
     // furniture. Walk up to one and use the room itself, in 3D.
     var stMap={};
@@ -3131,7 +3135,7 @@ function snapCamera(){
 function resetWorldToStreetSpawn(){
   currentLoc="street"; S.inside=null; S.insidePos=null;
   S.pos={ x:0, z:16 };
-  moveTarget=null; walkPath=[]; walkDest=null; pendingExit=false; pendingStation=null;
+  moveTarget=null; walkPath=[]; walkDest=null; pendingExit=false; pendingStation=null; routeTarget=null; routeExit=false;
   if(typeof worldGroup!=="undefined" && worldGroup) worldGroup.visible=true;
   if(typeof venueKeys!=="undefined" && typeof interiorGroups!=="undefined"){
     venueKeys.forEach(function(k){ if(interiorGroups[k]) interiorGroups[k].group.visible=false; });
@@ -3141,7 +3145,7 @@ function resetWorldToStreetSpawn(){
 }
 function enterVenue(key){
   var v=VENUES[key], ig=interiorGroups[key];
-  currentLoc=key; S.inside=key; moveTarget=null; walkPath=[]; walkDest=null; pendingStation=null; pendingExit=false;
+  currentLoc=key; S.inside=key; moveTarget=null; walkPath=[]; walkDest=null; pendingStation=null; pendingExit=false; routeTarget=null; routeExit=false;
   worldGroup.visible=false;
   venueKeys.forEach(function(k){ interiorGroups[k].group.visible = (k===key); });
   npcs.forEach(function(n){ placeNPC(n, true); });
@@ -3199,7 +3203,7 @@ function exitVenue(){
   worldGroup.visible=true;
   venueKeys.forEach(function(k){ interiorGroups[k].group.visible=false; });
   player.position.set(v.door.x, 0, v.door.z+1.6);
-  player.rotation.y=0; moveTarget=null; walkPath=[]; walkDest=null;
+  player.rotation.y=0; moveTarget=null; walkPath=[]; walkDest=null; routeTarget=null; routeExit=false;
   // Fixed landing view: the wide street framing, derived fresh on
   // every exit. Never in the roof or sky, never the room's zoom.
   resetCameraWide();
@@ -4316,7 +4320,7 @@ function setupInput(){
     var len=Math.hypot(dx,dy), max=44;
     if(len>max){ dx=dx/len*max; dy=dy/len*max; }
     setKnob(dx,dy); joyVec.x=dx/max; joyVec.y=dy/max;
-    if(len>8){ moveTarget=null; walkPath=[]; walkDest=null; }
+    if(len>8){ moveTarget=null; walkPath=[]; walkDest=null; routeTarget=null; routeExit=false; }
   });
   function joyEnd(e){ if(e.pointerId!==joyId) return; joyId=null; joyVec.x=0; joyVec.y=0; setKnob(0,0); }
   joy.addEventListener("pointerup", joyEnd); joy.addEventListener("pointercancel", joyEnd);
@@ -4544,7 +4548,7 @@ function gameLoop(){
     mx+=joyVec.x; mz+=joyVec.y;
     var hasInput=Math.hypot(mx,mz)>0.12;
     if(hasInput){
-      moveTarget=null; walkPath=[]; walkDest=null; pendingExit=false; pendingStation=null;
+      moveTarget=null; walkPath=[]; walkDest=null; pendingExit=false; pendingStation=null; routeTarget=null; routeExit=false;
       var len=Math.hypot(mx,mz); mx/=len; mz/=len;
       // Movement relative to camera: forward on screen is away from camera
       var fx=-Math.sin(camYaw), fz=-Math.cos(camYaw);
@@ -4559,6 +4563,19 @@ function gameLoop(){
       player.rotation.y+=dr*Math.min(1,dt*11);
       speedNorm=1;
     } else if(moveTarget){
+      // Fix2: route a diner walk around the counter instead of
+      // through it. Only when no detour is already running and no
+      // waypoints are pending; the original target is stashed in
+      // routeTarget and resumed on the last waypoint's arrival.
+      if(!walkPath.length && !routeTarget && currentLoc==="diner" && moveTarget){
+        var _wps=dinerRouteWaypoints(player.position.x, player.position.z, moveTarget.x, moveTarget.z);
+        if(_wps && _wps.length){
+          routeTarget={ x:moveTarget.x, z:moveTarget.z, venue:moveTarget.venue };
+          routeExit=pendingExit; pendingExit=false;
+          walkPath=_wps.slice(1);
+          moveTarget=_wps[0];
+        }
+      }
       // A tap target the player cannot reach must not hold the
       // player, or the idle camera, forever: if the player has
       // not moved toward it for three seconds, give the tap up.
@@ -4567,12 +4584,21 @@ function gameLoop(){
       var nowM=performance.now();
       if(moveTarget!==moveTargetSeen){ moveTargetSeen=moveTarget; lastMoveAt=nowM; lastMoveX=player.position.x; lastMoveZ=player.position.z; }
       else if(Math.hypot(player.position.x-lastMoveX, player.position.z-lastMoveZ)>0.05){ lastMoveAt=nowM; lastMoveX=player.position.x; lastMoveZ=player.position.z; }
-      else if(nowM-lastMoveAt>3000){ moveTarget=null; moveTargetSeen=null; walkPath=[]; walkDest=null; pendingExit=false; pendingStation=null; }
+      else if(nowM-lastMoveAt>3000){ moveTarget=null; moveTargetSeen=null; walkPath=[]; walkDest=null; pendingExit=false; pendingStation=null; routeTarget=null; routeExit=false; }
       var dx=moveTarget? moveTarget.x-player.position.x : 0, dz=moveTarget? moveTarget.z-player.position.z : 0;
       var dist=Math.hypot(dx,dz);
       if(moveTarget && dist<0.35){
         var destVenue=moveTarget.venue; moveTarget=null;
-        if(pendingExit && currentLoc!=="street"){
+        if(walkPath.length){
+          var nx=walkPath.shift();
+          moveTarget={ x:nx.x, z:nx.z, venue:(walkPath.length===0 && walkDest ? walkDest : undefined) };
+        } else if(routeTarget){
+          // Fix2: last counter waypoint reached — resume the
+          // original walk, restoring a stashed exit request.
+          var rt=routeTarget; routeTarget=null;
+          moveTarget={ x:rt.x, z:rt.z, venue:rt.venue };
+          if(routeExit){ pendingExit=true; routeExit=false; }
+        } else if(pendingExit && currentLoc!=="street"){
           pendingExit=false;
           var exitKey=currentLoc; exitVenue();
           if(destVenue){
@@ -4593,9 +4619,6 @@ function gameLoop(){
         } else if(pendingStation){
           var ps=pendingStation; pendingStation=null;
           runActivity(ps.act, ps.key, ps.station);
-        } else if(walkPath.length){
-          var nx=walkPath.shift();
-          moveTarget={ x:nx.x, z:nx.z, venue:(walkPath.length===0 && walkDest ? walkDest : undefined) };
         } else if(destVenue && currentLoc==="street") enterVenue(destVenue);
       } else if(moveTarget){
         var sp2=clamp(dist*1.6, 1.6, 6.4);
@@ -4672,6 +4695,11 @@ function gameLoop(){
   // almost never sat still. On the street nothing restores:
   // street zoom and orbit are the player's to keep.
   if(currentLoc!=="street"){
+    // Fix2: the 30 s idle clock kept aging while a panel was open,
+    // so the wide restore fired the moment the panel closed and
+    // the view drifted after every panel. Time behind a panel
+    // does not count as idle.
+    if(overlayUp()) lastCamInputAt=performance.now();
     var camOffWide = Math.abs(camDist-CAM_WIDE_ROOM.dist)>0.01 || Math.abs(camYaw-CAM_WIDE_ROOM.yaw)>0.02 || Math.abs(camPitch-CAM_WIDE_ROOM.pitch)>0.02;
     var playerIdle = !busy && !moveTarget && Math.hypot(joyVec.x, joyVec.y)<=0.12
       && !keys["w"] && !keys["a"] && !keys["s"] && !keys["d"]
@@ -5549,6 +5577,50 @@ var HOUSING=["Studio starter apartment","Cozy one bedroom (upgraded kitchen and 
    route on a 1-unit grid with A* around the building footprints,
    so Alex walks around buildings instead of pushing into them. */
 var walkPath=[], walkDest=null;
+// Fix2 (2026-11-15): indoor walks had no furniture collision, so
+// a straight walk from the diner eat side to the exit cut through
+// the counter mesh and the player stood hidden behind it. Route
+// state for the counter detour: routeTarget is the original walk
+// target, routeExit remembers a stashed exit request while the
+// detour runs.
+var routeTarget=null, routeExit=false;
+function dinerCounterRect(){
+  var ig=interiorGroups.diner; if(!ig) return null;
+  // The counter's real footprint (x -4.5..4.5, z 4.65..5.75).
+  // The routing test uses the real footprint, not a margin: the
+  // waypoints already sit 0.9 clear of it, and a 0.7 margin made
+  // the resumed final leg re-trigger the detour (the leg from the
+  // south waypoint to the exit clips the margin's corner), so the
+  // player walked back north forever.
+  return { x1:ig.ox-4.5, x2:ig.ox+4.5, z1:ig.oz+4.65, z2:ig.oz+5.75 };
+}
+function segCrossesRect(x0,z0,x1,z1,r){
+  // True only when the segment passes through the rect with both
+  // ends outside it: a target inside the rect (the sit station at
+  // the counter) walks straight in, as before.
+  function inside(x,z){ return x>r.x1 && x<r.x2 && z>r.z1 && z<r.z2; }
+  if(inside(x0,z0) || inside(x1,z1)) return false;
+  var dx=x1-x0, dz=z1-z0, t0=0, t1=1;
+  var p=[-dx, dx, -dz, dz], q=[x0-r.x1, r.x2-x0, z0-r.z1, r.z2-z0];
+  for(var i=0;i<4;i++){
+    if(p[i]===0){ if(q[i]<0) return false; }
+    else { var t=q[i]/p[i]; if(p[i]<0){ if(t>t1) return false; if(t>t0) t0=t; } else { if(t<t0) return false; if(t<t1) t1=t; } }
+  }
+  return t0<=t1;
+}
+function dinerRouteWaypoints(fx,fz,tx,tz){
+  var ig=interiorGroups.diner; var r=dinerCounterRect();
+  if(!ig || !r) return null;
+  if(!segCrossesRect(fx,fz,tx,tz,r)) return null;
+  // Nearer end of the counter, then walk its end: first to the
+  // near edge, then to the far edge, so no leg re-crosses the
+  // counter from any approach. A mid-line first waypoint cut the
+  // counter's corner on the way back in, so the near edge is the
+  // only safe first step.
+  var endX=((fx+tx)/2 < ig.ox) ? ig.ox-5.4 : ig.ox+5.4;
+  if(tz>r.z2) return [{x:endX, z:ig.oz+3.8}, {x:endX, z:ig.oz+6.6}];
+  return [{x:endX, z:ig.oz+6.6}, {x:endX, z:ig.oz+3.8}];
+}
 function cellBlocked(ix, iz){
   for(var i=0;i<buildingBoxes.length;i++){
     var b=buildingBoxes[i];
@@ -5615,7 +5687,7 @@ function findWalkPath(sx, sz, tx, tz){
   else pts.push({x:tx, z:tz});
   return pts;
 }
-function cancelWalk(){ moveTarget=null; walkPath=[]; walkDest=null; pendingStation=null; pendingExit=false; }
+function cancelWalk(){ moveTarget=null; walkPath=[]; walkDest=null; pendingStation=null; pendingExit=false; routeTarget=null; routeExit=false; }
 function startWalk(tx, tz, destVenue){
   var pts=findWalkPath(player.position.x, player.position.z, tx, tz);
   walkDest=destVenue||null;
@@ -6015,7 +6087,7 @@ var followId=null, padWasActive=false, padRest={};
       var rest=padRest[restKey];
       if(!rest){ rest=padRest[restKey]={ ax:gp.axes[0]||0, ay:gp.axes[1]||0, rx:gp.axes[2]||0, ry:gp.axes[3]||0 }; }
       var ax=(gp.axes[0]||0)-rest.ax, ay=(gp.axes[1]||0)-rest.ay;
-      if(Math.hypot(ax,ay)>0.28){ joyVec.x=ax; joyVec.y=ay; padWasActive=true; moveTarget=null; walkPath=[]; walkDest=null; }
+      if(Math.hypot(ax,ay)>0.28){ joyVec.x=ax; joyVec.y=ay; padWasActive=true; moveTarget=null; walkPath=[]; walkDest=null; routeTarget=null; routeExit=false; }
       else if(padWasActive){ joyVec.x=0; joyVec.y=0; padWasActive=false; }
       var rx=(gp.axes[2]||0)-rest.rx, ry=(gp.axes[3]||0)-rest.ry;
       if(Math.abs(rx)>0.25){ camYaw-=rx*0.045; lastCamInputAt=performance.now(); }
@@ -6448,7 +6520,7 @@ function doWorkTogether(){
 /* ---------- Wraps: entering, activities, ambient sound ---------- */
 var _enterOrig=enterVenue;
 enterVenue=function(key){
-  if(key.indexOf("east")===0 && !S.eastUnlocked){ toast("The Eastside is still locked. It opens at score 250 or Day 12, as your footing grows."); moveTarget=null; walkPath=[]; walkDest=null; return; }
+  if(key.indexOf("east")===0 && !S.eastUnlocked){ toast("The Eastside is still locked. It opens at score 250 or Day 12, as your footing grows."); moveTarget=null; walkPath=[]; walkDest=null; routeTarget=null; routeExit=false; return; }
   _enterOrig(key);
   if(!enterVenue._seen) enterVenue._seen={};
   var dayKey=S.day+"_"+key;
