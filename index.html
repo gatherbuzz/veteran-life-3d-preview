@@ -1866,7 +1866,7 @@ function confirmPurchase(title, desc, cost, onConfirm, onCancel){
   // because no state is touched until the player confirms.
   openModal({
     title:title,
-    body:desc+"<br /><br />Your balance is "+fmtMoney(S.money)+". If you cancel, nothing is charged and nothing changes.",
+    body:desc+"<br /><br />Your balance is <span id=\"payBalance\">"+fmtMoney(S.money)+"</span>. If you cancel, nothing is charged and nothing changes.",
     price:fmtMoney(cost),
     buttons:[
       { label:"Cancel", onClick:function(){ if(onCancel) onCancel(); toast("Purchase cancelled. Nothing was charged."); } },
@@ -2452,6 +2452,7 @@ function buildInteriors(){
       mealPlate.position.set(-6.3,0.79,-3.5); mealPlate.castShadow=true; mealProp.add(mealPlate);
       var mealMug=new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.09,0.16,12), mat(0x2f7f8f,0.6));
       mealMug.position.set(-5.6,0.86,-3.3); mealMug.castShadow=true; mealProp.add(mealMug);
+      mealProp.userData.plate=mealPlate; mealProp.userData.mug=mealMug;
       mealProp.visible=false; g.add(mealProp);
       interiorGroups[key].mealProp=mealProp;
       interiorGroups[key].spots={ eat:{x:ox-6.7,z:oz-2.6,ry:Math.PI}, sit:{x:ox-1.2,z:oz+5.2,ry:Math.PI}, work:{x:ox,z:oz,ry:0} };
@@ -2876,7 +2877,7 @@ function enterVenue(key){
     npcs.forEach(function(hn){
       if(hn.userData.def.name!==hostName) return;
       if(key==="neon"){ hn.position.set(ig.ox+1.5,0,ig.oz-4.8); hn.userData.pose=null; }
-      else if(ig.seats.length){ var hs=ig.seats[0]; hn.position.set(hs.x,0,hs.z); hn.userData.pose="sit"; }
+      else if(ig.seats.length){ var hs=firstFreeSeat(key, 0, hn); if(hs){ hn.position.set(hs.x,0,hs.z); hn.userData.pose="sit"; } else { hn.position.set(ig.ox+2.5,0,ig.oz+1.5); hn.userData.pose=null; } }
       else { hn.position.set(ig.ox+2.5,0,ig.oz+1.5); hn.userData.pose=null; }
       hn.userData.insideAt=key; hn.userData.target=null; hn.visible=true;
     });
@@ -2938,6 +2939,34 @@ function showLoc(txt){
 }
 
 /* ---------- NPC routines ---------- */
+/* Step a waiting spot sideways until no other neighbor already waits
+   (or stands) within an arm's length of it: neighbors all wait at the
+   same door offset, so without this two of them stand shoulder to
+   shoulder, almost touching, and read as one person. */
+function spaceOutTarget(n, tx, tz){
+  var tries=0;
+  while(tries<4 && npcs.some(function(o){
+    if(o===n) return false;
+    if(o.userData.target && Math.hypot(o.userData.target.x-tx, o.userData.target.z-tz)<1.2) return true;
+    if(o.visible && Math.hypot(o.position.x-tx, o.position.z-tz)<1.2) return true;
+    return false;
+  })){ tx+=1.6; tries++; }
+  return { x:tx, z:tz };
+}
+function pickFreeBench(n){
+  // A bench is free when no other neighbor is already walking to it
+  // or sitting on it; otherwise two neighbors end up on one bench.
+  var free=benchSpots.filter(function(b){
+    return !npcs.some(function(o){
+      if(o===n) return false;
+      if(o.userData.target && Math.hypot(o.userData.target.x-b[0], o.userData.target.z-b[1])<1.5) return true;
+      if(o.userData.pose==="sit" && Math.hypot(o.position.x-b[0], o.position.z-b[1])<1.5) return true;
+      return false;
+    });
+  });
+  if(!free.length) return null;
+  return free[Math.floor(Math.random()*free.length)];
+}
 function npcDestination(def){
   var dest=def.schedule[phaseOf(S.minutes)];
   return dest;
@@ -2946,21 +2975,24 @@ function placeNPC(n, snap){
   var def=n.userData.def;
   var dest=npcDestination(def);
   if(currentLoc!=="street" && dest===currentLoc){
-    // Inside with the player: sit at a seat or stand near the action
+    // Inside with the player: sit at a seat or stand near the action.
+    // The seat is picked from the name hash, then scanned forward
+    // until a free one turns up, so a neighbor never sits in the
+    // chair the player (or another neighbor) already occupies.
     var ig=interiorGroups[currentLoc];
-    var seat=ig.seats.length? ig.seats[Math.abs(def.name.charCodeAt(0))%ig.seats.length] : null;
+    var seat=firstFreeSeat(currentLoc, ig.seats.length? Math.abs(def.name.charCodeAt(0))%ig.seats.length : 0, n);
     if(seat){ n.position.set(seat.x,0,seat.z); n.userData.pose="sit"; n.userData.target=null; n.userData.insideAt=currentLoc; return; }
     n.position.set(ig.ox+3,0,ig.oz+2); n.userData.pose=null; n.userData.insideAt=currentLoc; return;
   }
   n.userData.insideAt=null; n.userData.pose=null;
   if(dest==="street"){ if(snap||!n.userData.target){ var nd=streetNodes[Math.floor(Math.random()*streetNodes.length)]; n.userData.target={x:nd[0],z:nd[1]}; if(snap) n.position.set(nd[0],0,nd[1]); } return; }
-  if(dest==="home" && def.name!=="x"){ if(snap){ var hv=VENUES.home; n.position.set(hv.door.x+4,0,hv.door.z+3); } n.userData.target={x:VENUES.home.door.x+4,z:VENUES.home.door.z+3}; n.userData.away=true; return; }
+  if(dest==="home" && def.name!=="x"){ var hv=VENUES.home; var ht=spaceOutTarget(n, hv.door.x+4, hv.door.z+3); if(snap){ n.position.set(ht.x,0,ht.z); } n.userData.target=ht; n.userData.away=true; return; }
   n.userData.away=false;
   n.userData.sitT=null; n.userData.sitAtBench=false; // a fresh placement is never a bench sit
   var v=VENUES[dest];
   // Stand to the side of the door, never in front of it: a neighbor
   // waiting right on the threshold reads as blocking the entrance.
-  if(v){ n.userData.target={x:v.door.x+3.5, z:v.door.z+2.2}; if(snap) n.position.set(v.door.x+3.5+(Math.random()*2-1),0,v.door.z+2.2); }
+  if(v){ var dt2=spaceOutTarget(n, v.door.x+3.5, v.door.z+2.2); n.userData.target=dt2; if(snap) n.position.set(dt2.x+(Math.random()*2-1)*0.3,0,dt2.z+(Math.random()*2-1)*0.3); }
 }
 function updateNPCs(dt, t){
   npcs.forEach(function(n){
@@ -2993,6 +3025,15 @@ function updateNPCs(dt, t){
       if(dist<0.5){
         // Arrived at a bench: sit for a while instead of standing around.
         if(n.userData.sitAtBench){
+          // Another neighbor may have sat down here first: never
+          // share one bench, walk on to a street node instead.
+          var benchTaken=npcs.some(function(o){ return o!==n && o.userData.pose==="sit" && Math.hypot(o.position.x-n.position.x, o.position.z-n.position.z)<1.2; });
+          if(benchTaken){
+            n.userData.sitAtBench=false; n.userData.waitT=1+Math.random()*2;
+            var nd3=streetNodes[Math.floor(Math.random()*streetNodes.length)];
+            n.userData.target={x:nd3[0],z:nd3[1]};
+            return;
+          }
           n.userData.pose="sit"; n.userData.sitT=20+Math.random()*20;
           n.rotation.y=n.userData.benchRy||0; n.userData.sitAtBench=false;
           return;
@@ -3003,9 +3044,14 @@ function updateNPCs(dt, t){
           var dest=npcDestination(def);
           if(dest==="street"){
             if(Math.random()<0.25){
-              var bench=benchSpots[Math.floor(Math.random()*benchSpots.length)];
-              n.userData.target={x:bench[0],z:bench[1]};
-              n.userData.sitAtBench=true; n.userData.benchRy=bench[2];
+              var bench=pickFreeBench(n);
+              if(bench){
+                n.userData.target={x:bench[0],z:bench[1]};
+                n.userData.sitAtBench=true; n.userData.benchRy=bench[2];
+              } else {
+                var nd=streetNodes[Math.floor(Math.random()*streetNodes.length)];
+                n.userData.target={x:nd[0],z:nd[1]};
+              }
             } else {
               var nd=streetNodes[Math.floor(Math.random()*streetNodes.length)];
               n.userData.target={x:nd[0],z:nd[1]};
@@ -3415,6 +3461,81 @@ function applyFx(fx){
   if(!fx) return;
   for(var k in fx){ if(S.needs[k]!==undefined) S.needs[k]=clamp(S.needs[k]+fx[k],0,100); }
 }
+/* ---------- Seat occupancy: never stack two figures in one chair ----------
+   The diner's chairs are shared: the host sits in one, ambient figures
+   sit in others, and NPCs pick one by name hash. The player's default
+   eat spot used to be the very first chair, so ordering a meal teleported
+   the player onto whoever already sat there (Dot, in the reported case).
+   Every seat choice below goes through these helpers, which treat a seat
+   as taken when any figure (NPC, ambient figure, or the player) is
+   already within an arm's length of it. */
+function figsNear(x, z, r, skip){
+  var rr=r||0.9;
+  if(skip!==player && Math.hypot(player.position.x-x, player.position.z-z)<rr) return true;
+  for(var i=0;i<npcs.length;i++){
+    var n=npcs[i];
+    if(n===skip || !n.visible) continue;
+    if(Math.hypot(n.position.x-x, n.position.z-z)<rr) return true;
+  }
+  if(currentLoc!=="street" && interiorGroups[currentLoc]){
+    var ig=interiorGroups[currentLoc], amb=ig.ambient||[];
+    for(var j=0;j<amb.length;j++){
+      // Ambient figures are children of the room group, so their
+      // positions are room-local: add the room origin to compare.
+      if(Math.hypot(ig.ox+amb[j].position.x-x, ig.oz+amb[j].position.z-z)<rr) return true;
+    }
+  }
+  return false;
+}
+function firstFreeSeat(key, startIdx, skipFig){
+  var ig=interiorGroups[key];
+  if(!ig || !ig.seats.length) return null;
+  for(var i=0;i<ig.seats.length;i++){
+    var s=ig.seats[(startIdx+i)%ig.seats.length];
+    if(!figsNear(s.x, s.z, 0.9, skipFig)) return s;
+  }
+  return null;
+}
+function freeSeatFor(key, wantX, wantZ, wantRy){
+  // The wanted seat if it is free, else the nearest free chair in the
+  // room, else a free counter stool at the diner, else the wanted seat
+  // (last resort: never crash, never take a seat that is free
+  // elsewhere). The player is skipped in the occupancy check: they are
+  // standing at the wanted spot already when they walked to its ring.
+  if(!figsNear(wantX, wantZ, 0.9, player)) return { x:wantX, z:wantZ, ry:wantRy||0 };
+  var ig=interiorGroups[key], best=null, bd=1e9;
+  (ig.seats||[]).forEach(function(s){
+    if(figsNear(s.x, s.z, 0.9, player)) return;
+    var d=(s.x-wantX)*(s.x-wantX)+(s.z-wantZ)*(s.z-wantZ);
+    if(d<bd){ bd=d; best=s; }
+  });
+  if(best) return { x:best.x, z:best.z, ry:wantRy||0 };
+  if(key==="diner"){
+    var stools=[-3.6,-1.2,1.2,3.6];
+    for(var i=0;i<stools.length;i++){
+      var sx=ig.ox+stools[i], sz=ig.oz+5.2;
+      if(!figsNear(sx, sz, 0.9, player)) return { x:sx, z:sz, ry:wantRy||0 };
+    }
+  }
+  return { x:wantX, z:wantZ, ry:wantRy||0 };
+}
+function placeMealProp(ig, seat){
+  // The plate and mug sit on the table in front of the player's actual
+  // seat, not the default west table: a free seat at another table (or
+  // the counter) would otherwise leave the food behind at the wrong
+  // table while the player eats with nothing in front of them.
+  if(!ig || !ig.mealProp || !seat) return;
+  var mp=ig.mealProp, plate=mp.userData.plate, mug=mp.userData.mug;
+  if(!plate || !mug) return;
+  var lx=seat.x-ig.ox, lz=seat.z-ig.oz;
+  if(lz>4){ // counter stool: food on the counter in front
+    plate.position.set(lx,1.11,5.2); mug.position.set(lx+0.5,1.16,5.2);
+  } else {
+    var tc=[-6,-0.5,5].reduce(function(a,b){ return Math.abs(b-lx)<Math.abs(a-lx)?b:a; });
+    plate.position.set(tc-0.3,0.79,-3.5); mug.position.set(tc+0.4,0.86,-3.3);
+  }
+}
+
 function runActivity(act, venueKey, station){
   // One tap, one charge, one reward: while a paid activity is waiting
   // on its confirm dialog, further taps are ignored, so a double tap
@@ -3434,12 +3555,17 @@ function runActivity(act, venueKey, station){
     else if(act.name.indexOf("Cook")>=0||act.name.indexOf("meal")>=0||act.name.indexOf("Special")>=0||act.name.indexOf("pie")>=0||act.name.indexOf("sandwich")>=0){ pose="eat"; spot=ig.spots.eat||ig.spots.sit; }
     else { pose="sit"; spot=ig.spots.sit||ig.spots.eat; }
     if(station) spot={ x:station.x, z:station.z, ry:station.ry||0 };
+    // Seat the player where nobody already sits: the default spot is
+    // a shared chair, and eating or sitting there would stack the
+    // player onto its occupant. Pick the nearest free seat instead.
+    // Sleep and dance/workout spots are not chairs and are untouched.
+    if(spot && (pose==="eat"||pose==="sit")) spot=freeSeatFor(venueKey, spot.x, spot.z, spot.ry);
     if(spot){ player.position.set(spot.x,0,spot.z); player.rotation.y=spot.ry||0; moveTarget=null; }
     activityPose=pose;
     // A meal at the diner is visible: plate and mug on the table
     // while eating, cleared when the activity finishes.
     var mealProp=(venueKey==="diner" && pose==="eat" && ig.mealProp) ? ig.mealProp : null;
-    if(mealProp) mealProp.visible=true;
+    if(mealProp){ mealProp.visible=true; placeMealProp(ig, spot); }
     var dur = act.sleep? 2600 : 3000;
     var startT=performance.now();
     $("activityBar").classList.add("show");
@@ -3567,6 +3693,11 @@ function refreshHUD(){
   $("clockLbl").textContent="Day "+S.day+" · Week "+(Math.floor((S.day-1)/7)+1);
   $("phaseLbl").textContent=phaseOf(S.minutes)+", "+fmtClock(S.minutes);
   $("moneyLbl").textContent=fmtMoney(S.money)+(S.debt>0?" (owes "+fmtMoney(S.debt)+")":"");
+  // The Pay dialog's balance is live: a reward that lands while the
+  // dialog is open (the daily quest ticker runs behind it) updates
+  // the figure in the dialog as well as the HUD, so the two can
+  // never disagree.
+  var pb=$("payBalance"); if(pb) pb.textContent=fmtMoney(S.money);
   $("jobLbl").textContent=S.jobTitle+(S.jobIndex>=0?" at "+fmtMoney(S.payRate)+"/hr":"");
   S.score=calcScore();
   $("scoreLbl").textContent="Score "+S.score;
@@ -3890,7 +4021,11 @@ function setupInput(){
     // without a final move event still starts the idle window at
     // the moment the player actually let go.
     lastCamInputAt=performance.now();
-    if(wasTap && !busy) tapToMove(e);
+    // A tap on the ground while any sheet or modal is open must not
+    // queue a walk: the old code only checked busy, so the walk was
+    // stored and fired the moment the sheet closed. Same rule as the
+    // joystick, which already refuses input while a sheet is open.
+    if(wasTap && !busy && !overlayUp()) tapToMove(e);
   });
   // Zoom is a street only gesture. Indoors the framing is the
   // fixed wide room view, so a scroll or pinch made in a room
@@ -3911,6 +4046,9 @@ function setupInput(){
 
   var ray=new THREE.Raycaster(), groundPlane=new THREE.Plane(new THREE.Vector3(0,1,0), 0);
   function tapToMove(e){
+    // Guarded here as well as at the pointerup call: a tap must never
+    // start or queue a walk while a sheet or modal is open.
+    if(busy || overlayUp()) return;
     // A fresh tap is a new destination: any walk-to-station or
     // walk-to-exit left over from an earlier tap is cancelled, so
     // the old activity can never fire on arrival at the new spot.
@@ -5983,7 +6121,7 @@ setInterval(function(){
   if(typeof S==="undefined" || !S.day) return;
   ensureDaily();
   if(S.dailyQuest && !S.dailyQuest.done && dailyProgress()>=S.dailyQuest.target){
-    S.dailyQuest.done=true; S.money+=25; toast("Daily quest complete: "+S.dailyQuest.text+" +$25.", 6000); addLog("Daily quest complete: "+S.dailyQuest.text+"."); saveGame(true);
+    S.dailyQuest.done=true; S.money+=25; toast("Daily quest complete: "+S.dailyQuest.text+" +$25.", 6000); addLog("Daily quest complete: "+S.dailyQuest.text+"."); refreshHUD(); saveGame(true);
   }
   if(S.lastWeatherDay!==S.day){
     S.lastWeatherDay=S.day;
@@ -5991,7 +6129,7 @@ setInterval(function(){
     if(S.housingTier>0){ S.needs.energy=clamp(S.needs.energy+4,0,100); S.needs.fun=clamp(S.needs.fun+4,0,100); }
     if(S.business.owned && S.day%7===1 && S.business.lastPaidDay!==S.day){
       var rev=80*S.business.level+Math.round(Math.random()*40);
-      S.business.lastPaidDay=S.day; S.business.revenue+=rev; S.money+=rev;
+      S.business.lastPaidDay=S.day; S.business.revenue+=rev; S.money+=rev; refreshHUD();
       toast("Business payday: "+fmtMoney(rev)+" from "+S.business.kind+"."); addLog("Business payday of "+fmtMoney(rev)+".");
     }
     var mon=new Date().getMonth(), skey=mon+"-"+new Date().getFullYear();
@@ -11965,9 +12103,17 @@ function updateModelRig(g, rig, speed, dt, t, pose) {
     trackFoot(rig, 'R', b.sit);
   }
   if (b.eat > 0.02) {
-    rotWorld(bones.UpperArmR, pitchAxis, -0.4 * b.eat);
-    rotWorld(bones.LowerArmR, pitchAxis, -0.25 * b.eat);
-    rotWorld(bones.Head, pitchAxis, (0.12 + Math.sin(t * 2.6) * 0.08) * b.eat);
+    // Hand to mouth, in bites: the arm lifts well clear of the lap,
+    // rolls in toward the mouth, and the hand rises and falls with
+    // each bite, so eating reads at a glance instead of a small
+    // forward gesture. (Roll verified by forward kinematics: +0.9
+    // puts the wrist ~0.21 m from the mouth; 0 leaves it 0.29 m out
+    // to the side.)
+    var bite = Math.sin(t * 2.6);
+    rotWorld(bones.UpperArmR, pitchAxis, (-1.15 + bite * 0.25) * b.eat);
+    rotWorld(bones.UpperArmR, rollAxis, 0.9 * b.eat);
+    rotWorld(bones.LowerArmR, pitchAxis, -0.85 * b.eat);
+    rotWorld(bones.Head, pitchAxis, (0.12 + bite * 0.08) * b.eat);
   }
   if (b.dance > 0.02) {
     rotWorld(bones.UpperArmL, pitchAxis, -1.1 * b.dance);
